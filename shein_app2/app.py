@@ -1,14 +1,21 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import re
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="نظام جمع أوردرات شي إن", page_icon="🛍️", layout="centered")
+st.set_page_config(page_title="نظام إدارة طلبات شي إن", page_icon="🛍️", layout="centered")
+
+# دالة لاستخراج رابط الـ URL النقي من النص المشارك من تطبيق شي إن
+def extract_url(text):
+    if not text:
+        return ""
+    url_match = re.search(r'https?://[^\s]+', str(text))
+    return url_match.group(0) if url_match else str(text).strip()
 
 # 2. إنشاء وتوصيل قاعدة البيانات
 def get_db_connection():
-    conn = sqlite3.connect('orders.db', check_same_thread=False)
-    return conn
+    return sqlite3.connect('orders.db', check_same_thread=False)
 
 def init_db():
     conn = get_db_connection()
@@ -27,42 +34,42 @@ def init_db():
 
 init_db()
 
-# 3. الشريط الجانبي للتنقل
-st.sidebar.title("📌 القائمة")
-page = st.sidebar.radio("اختر الصفحة:", ["تقديم طلب جديد", "لوحة التحكم (الأدمن)"])
+# 3. الشريط الجانبي
+st.sidebar.title("📌 القائمة الرئيسية")
+page = st.sidebar.radio("انتقل إلى:", ["تقديم طلب جديد", "لوحة التحكم (الأدمن)"])
 
 # ---------------------------------------------------------
 # الصفحة الأولى: تقديم طلب جديد (للعملاء)
 # ---------------------------------------------------------
 if page == "تقديم طلب جديد":
-    st.title("🛍️ نموذج تسجيل طلبات شي إن")
-    st.write("برجاء إدخال اسمك ورابط حقيبة التسوق الخاصة بك")
+    st.title("🛍️ تسجيل طلب جديد")
+    st.write("قم بتعبئة البيانات أدناه لإرسال طلبك:")
 
     with st.form(key="order_form", clear_on_submit=True):
         customer_name = st.text_input("اسم العميل / اسم الحساب:")
-        bag_link = st.text_input("رابط شنطة شي إن (Bag Link):")
+        bag_link = st.text_area("رابط أو نص مشاركة حقيبة شي إن:")
         submit_button = st.form_submit_button(label="إرسال الطلب 🚀")
 
     if submit_button:
-        if customer_name.strip() and bag_link.strip():
+        clean_link = extract_url(bag_link)
+        if customer_name.strip() and clean_link:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
                 'INSERT INTO orders (customer_name, bag_link) VALUES (?, ?)',
-                (customer_name, bag_link)
+                (customer_name.strip(), clean_link)
             )
             conn.commit()
-            st.success("✅ تم تسجيل طلبك بنجاح! شكراً لك.")
+            st.success("✅ تم تسجيل طلبك بنجاح!")
         else:
-            st.error("⚠️ يرجى ملء كافة البيانات المطلوبة.")
+            st.error("⚠️ يرجى التأكد من كتابة الاسم ووضع الرابط بشكل صحيح.")
 
 # ---------------------------------------------------------
 # الصفحة الثانية: لوحة التحكم (للأدمن)
 # ---------------------------------------------------------
 elif page == "لوحة التحكم (الأدمن)":
-    st.title("🔐 لوحة تحكم الأدمن")
+    st.title("🔐 لوحة التحكم وإدارة الطلبات")
 
-    # التحقق من كلمة المرور
     if "admin_logged_in" not in st.session_state:
         st.session_state["admin_logged_in"] = False
 
@@ -76,59 +83,74 @@ elif page == "لوحة التحكم (الأدمن)":
                 st.error("❌ كلمة المرور غير صحيحة")
     else:
         st.sidebar.button("تسجيل الخروج", on_click=lambda: st.session_state.update({"admin_logged_in": False}))
-        st.subheader("📋 قائمة الطلبات المسجلة")
-
+        
         conn = get_db_connection()
         orders_df = pd.read_sql_query("SELECT id, customer_name, bag_link, order_number, status, created_at FROM orders ORDER BY id DESC", conn)
 
         if not orders_df.empty:
-            # عرض جدول الطلبات مع إمكانية الضغط على الرابط فتح الصفحة مباشرة
+            # تنظيف روابط الجدول العلوي لتفتح بشكل مباشر
+            orders_df['clean_url'] = orders_df['bag_link'].apply(extract_url)
+
+            st.subheader("📋 جدول الطلبات")
+            
+            # عرض الجدول بتنسيق منظم
             st.dataframe(
-                orders_df,
+                orders_df[['id', 'customer_name', 'clean_url', 'order_number', 'status']],
                 use_container_width=True,
                 column_config={
                     "id": "رقم الطلب",
                     "customer_name": "اسم العميل",
-                    "bag_link": st.column_config.LinkColumn(
-                        "رابط الشنطة 🔗", 
-                        display_text="فتح الرابط 🔗"  # النص الذي يظهر بدلاً من الرابط الطويل
+                    "clean_url": st.column_config.LinkColumn(
+                        "الرابط المباشر 🔗", 
+                        display_text="فتح الرابط 🔗"
                     ),
                     "order_number": "رقم الأوردر",
-                    "status": "الحالة",
-                    "created_at": "تاريخ الطلب"
+                    "status": "الحالة"
                 }
             )
 
             st.divider()
-            st.subheader("⚙️ تعديل أو معاينة طلب")
+            st.subheader("⚙️ إدارة وتعديل طلب محدد")
 
-            selected_id = st.selectbox("اختر رقم الطلب (ID):", orders_df["id"].tolist())
-            
-            # جلب بيانات الطلب المختار
+            # قائمة اختيار الطلب
+            order_list = {f"طلب رقم {row['id']} - {row['customer_name']}": row['id'] for _, row in orders_df.iterrows()}
+            selected_label = st.selectbox("اختر الطلب للتعديل أو الفتح:", list(order_list.keys()))
+            selected_id = order_list[selected_label]
+
+            # جلب تفاصيل الطلب المحدد
             current_order = orders_df[orders_df["id"] == selected_id].iloc[0]
+            target_url = extract_url(current_order["bag_link"])
 
-            # إظهار زر مباشر لفتح الرابط بشكل واضح
-            st.markdown(f"🔗 **رابط الشنطة المباشر:** [{current_order['bag_link']}]({current_order['bag_link']})")
+            # عرض زر خارجي مخصص لفتح الرابط
+            if target_url.startswith("http"):
+                st.link_button("🔗 فتح رابط الشنطة في تبويب جديد", target_url, use_container_width=True)
+            else:
+                st.warning("⚠️ الرابط المخزن غير صالح للنقر المباشر.")
 
-            new_order_num = st.text_input("رقم الأوردر:", value=current_order["order_number"])
-            status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
-            new_status = st.selectbox("حالة الطلب:", status_options, index=status_options.index(current_order["status"]) if current_order["status"] in status_options else 0)
+            # نموذج تعديل بيانات الطلب
+            with st.container(border=True):
+                st.markdown(f"**صاحب الطلب:** {current_order['customer_name']}")
+                new_order_num = st.text_input("رقم الأوردر (Order Number):", value=current_order["order_number"])
+                
+                status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
+                current_status_idx = status_options.index(current_order["status"]) if current_order["status"] in status_options else 0
+                new_status = st.selectbox("حالة الطلب:", status_options, index=current_status_idx)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("تحديث البيانات 💾"):
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE orders SET order_number = ?, status = ? WHERE id = ?", (new_order_num, new_status, selected_id))
-                    conn.commit()
-                    st.success("تم تحديث البيانات بنجاح!")
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("حفظ التعديلات 💾", use_container_width=True):
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE orders SET order_number = ?, status = ? WHERE id = ?", (new_order_num, new_status, selected_id))
+                        conn.commit()
+                        st.success("تم تحديث الطلب بنجاح!")
+                        st.rerun()
 
-            with col2:
-                if st.button("حذف الطلب 🗑️"):
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM orders WHERE id = ?", (selected_id,))
-                    conn.commit()
-                    st.warning("تم حذف الطلب!")
-                    st.rerun()
+                with col2:
+                    if st.button("حذف الطلب 🗑️", type="secondary", use_container_width=True):
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM orders WHERE id = ?", (selected_id,))
+                        conn.commit()
+                        st.warning("تم حذف الطلب بنجاح.")
+                        st.rerun()
         else:
-            st.info("لا توجد طلبات مسجلة حالياً.")
+            st.info("لا توجد طلبات مسجلة حتى الآن.")
