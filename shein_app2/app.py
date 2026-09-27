@@ -2,6 +2,8 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import re
+from datetime import datetime
+import pytz
 
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="نظام إدارة طلبات شي إن", page_icon="🛍️", layout="centered")
@@ -27,7 +29,7 @@ def init_db():
             bag_link TEXT NOT NULL,
             order_number TEXT DEFAULT '',
             status TEXT DEFAULT 'قيد الانتظار',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT
         )
     ''')
     conn.commit()
@@ -53,11 +55,15 @@ if page == "تقديم طلب جديد":
     if submit_button:
         clean_link = extract_url(bag_link)
         if customer_name.strip() and clean_link:
+            # تسجيل التوقيت الحالي بدقة (توقيت القاهرة)
+            cairo_tz = pytz.timezone('Africa/Cairo')
+            now_str = datetime.now(cairo_tz).strftime("%Y-%m-%d %I:%M:%S %p")
+
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                'INSERT INTO orders (customer_name, bag_link) VALUES (?, ?)',
-                (customer_name.strip(), clean_link)
+                'INSERT INTO orders (customer_name, bag_link, created_at) VALUES (?, ?, ?)',
+                (customer_name.strip(), clean_link, now_str)
             )
             conn.commit()
             st.success("✅ تم تسجيل طلبك بنجاح!")
@@ -93,9 +99,9 @@ elif page == "لوحة التحكم (الأدمن)":
 
             st.subheader("📋 جدول الطلبات")
             
-            # عرض الجدول بتنسيق منظم
+            # عرض الجدول بتنسيق منظم يضم تاريخ وتوقيت الطلب
             st.dataframe(
-                orders_df[['id', 'customer_name', 'clean_url', 'order_number', 'status']],
+                orders_df[['id', 'customer_name', 'clean_url', 'order_number', 'status', 'created_at']],
                 use_container_width=True,
                 column_config={
                     "id": "رقم الطلب",
@@ -105,7 +111,8 @@ elif page == "لوحة التحكم (الأدمن)":
                         display_text="فتح الرابط 🔗"
                     ),
                     "order_number": "رقم الأوردر",
-                    "status": "الحالة"
+                    "status": "الحالة",
+                    "created_at": "تاريخ ووقت الإرسال ⏰"
                 }
             )
 
@@ -113,7 +120,7 @@ elif page == "لوحة التحكم (الأدمن)":
             st.subheader("⚙️ إدارة وتعديل طلب محدد")
 
             # قائمة اختيار الطلب
-            order_list = {f"طلب رقم {row['id']} - {row['customer_name']}": row['id'] for _, row in orders_df.iterrows()}
+            order_list = {f"طلب رقم {row['id']} - {row['customer_name']} ({row['created_at']})": row['id'] for _, row in orders_df.iterrows()}
             selected_label = st.selectbox("اختر الطلب للتعديل أو الفتح:", list(order_list.keys()))
             selected_id = order_list[selected_label]
 
@@ -130,6 +137,7 @@ elif page == "لوحة التحكم (الأدمن)":
             # نموذج تعديل بيانات الطلب
             with st.container(border=True):
                 st.markdown(f"**صاحب الطلب:** {current_order['customer_name']}")
+                st.markdown(f"**توقيت الطلب:** {current_order['created_at']}")
                 new_order_num = st.text_input("رقم الأوردر (Order Number):", value=current_order["order_number"])
                 
                 status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
