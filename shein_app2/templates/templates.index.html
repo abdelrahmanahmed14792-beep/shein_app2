@@ -1,0 +1,38 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إرسال طلب Shein</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+</head>
+<body class="bg-light">
+    <div class="container mt-5" style="max-width: 550px;">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <h3 class="card-title text-center mb-4 text-primary">تسجيل طلب جديد</h3>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, message in messages %}
+                      <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="client_name" class="form-label fw-bold">اسم العميل:</label>
+                        <input type="text" class="form-control" id="client_name" name="client_name" required placeholder="أدخل اسمك بالكامل">
+                    </div>
+                    <div class="mb-3">
+                        <label for="shein_link" class="form-label fw-bold">رابط الـ Bag من Shein:</label>
+                        <input type="url" class="form-control" id="shein_link" name="shein_link" required placeholder="https://...">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 py-2 fs-5">إرسال الطلب</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
