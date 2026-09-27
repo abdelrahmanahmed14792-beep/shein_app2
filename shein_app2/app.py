@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import re
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="نظام إدارة طلبات شي إن", page_icon="🛍️", layout="centered")
@@ -55,9 +55,8 @@ if page == "تقديم طلب جديد":
     if submit_button:
         clean_link = extract_url(bag_link)
         if customer_name.strip() and clean_link:
-            # تسجيل التوقيت الحالي بدقة (توقيت القاهرة)
-            cairo_tz = pytz.timezone('Africa/Cairo')
-            now_str = datetime.now(cairo_tz).strftime("%Y-%m-%d %I:%M:%S %p")
+            # حساب توقيت القاهرة باستخدام zoneinfo المدمجة في بايثون
+            now_str = datetime.now(ZoneInfo('Africa/Cairo')).strftime("%Y-%m-%d %I:%M:%S %p")
 
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -94,12 +93,10 @@ elif page == "لوحة التحكم (الأدمن)":
         orders_df = pd.read_sql_query("SELECT id, customer_name, bag_link, order_number, status, created_at FROM orders ORDER BY id DESC", conn)
 
         if not orders_df.empty:
-            # تنظيف روابط الجدول العلوي لتفتح بشكل مباشر
             orders_df['clean_url'] = orders_df['bag_link'].apply(extract_url)
 
             st.subheader("📋 جدول الطلبات")
             
-            # عرض الجدول بتنسيق منظم يضم تاريخ وتوقيت الطلب
             st.dataframe(
                 orders_df[['id', 'customer_name', 'clean_url', 'order_number', 'status', 'created_at']],
                 use_container_width=True,
@@ -119,22 +116,18 @@ elif page == "لوحة التحكم (الأدمن)":
             st.divider()
             st.subheader("⚙️ إدارة وتعديل طلب محدد")
 
-            # قائمة اختيار الطلب
             order_list = {f"طلب رقم {row['id']} - {row['customer_name']} ({row['created_at']})": row['id'] for _, row in orders_df.iterrows()}
             selected_label = st.selectbox("اختر الطلب للتعديل أو الفتح:", list(order_list.keys()))
             selected_id = order_list[selected_label]
 
-            # جلب تفاصيل الطلب المحدد
             current_order = orders_df[orders_df["id"] == selected_id].iloc[0]
             target_url = extract_url(current_order["bag_link"])
 
-            # عرض زر خارجي مخصص لفتح الرابط
             if target_url.startswith("http"):
                 st.link_button("🔗 فتح رابط الشنطة في تبويب جديد", target_url, use_container_width=True)
             else:
                 st.warning("⚠️ الرابط المخزن غير صالح للنقر المباشر.")
 
-            # نموذج تعديل بيانات الطلب
             with st.container(border=True):
                 st.markdown(f"**صاحب الطلب:** {current_order['customer_name']}")
                 st.markdown(f"**توقيت الطلب:** {current_order['created_at']}")
