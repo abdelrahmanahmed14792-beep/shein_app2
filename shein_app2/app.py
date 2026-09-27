@@ -54,7 +54,7 @@ if page == "تقديم طلب جديد":
             conn.commit()
             st.success("✅ تم تسجيل طلبك بنجاح! شكراً لك.")
         else:
-            st.error("⚠️ يرجى ملء كافة البيانات المطلوب.")
+            st.error("⚠️ يرجى ملء كافة البيانات المطلوبة.")
 
 # ---------------------------------------------------------
 # الصفحة الثانية: لوحة التحكم (للأدمن)
@@ -82,16 +82,33 @@ elif page == "لوحة التحكم (الأدمن)":
         orders_df = pd.read_sql_query("SELECT id, customer_name, bag_link, order_number, status, created_at FROM orders ORDER BY id DESC", conn)
 
         if not orders_df.empty:
-            # عرض جدول الطلبات
-            st.dataframe(orders_df, use_container_width=True)
+            # عرض جدول الطلبات مع إمكانية الضغط على الرابط فتح الصفحة مباشرة
+            st.dataframe(
+                orders_df,
+                use_container_width=True,
+                column_config={
+                    "id": "رقم الطلب",
+                    "customer_name": "اسم العميل",
+                    "bag_link": st.column_config.LinkColumn(
+                        "رابط الشنطة 🔗", 
+                        display_text="فتح الرابط 🔗"  # النص الذي يظهر بدلاً من الرابط الطويل
+                    ),
+                    "order_number": "رقم الأوردر",
+                    "status": "الحالة",
+                    "created_at": "تاريخ الطلب"
+                }
+            )
 
             st.divider()
-            st.subheader("⚙️ تعديل أو تحديث طلب")
+            st.subheader("⚙️ تعديل أو معاينة طلب")
 
             selected_id = st.selectbox("اختر رقم الطلب (ID):", orders_df["id"].tolist())
             
             # جلب بيانات الطلب المختار
             current_order = orders_df[orders_df["id"] == selected_id].iloc[0]
+
+            # إظهار زر مباشر لفتح الرابط بشكل واضح
+            st.markdown(f"🔗 **رابط الشنطة المباشر:** [{current_order['bag_link']}]({current_order['bag_link']})")
 
             new_order_num = st.text_input("رقم الأوردر:", value=current_order["order_number"])
             status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
