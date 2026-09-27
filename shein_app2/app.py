@@ -1,132 +1,117 @@
-﻿from flask import Flask, render_template, request, redirect, url_for, flash, session
+import streamlit as st
 import sqlite3
-from datetime import datetime
+import pandas as pd
 
-app = Flask(__name__)
-app.secret_key = 'super_secret_key_for_shein_app'
+# 1. إعدادات الصفحة
+st.set_page_config(page_title="نظام جمع أوردرات شي إن", page_icon="🛍️", layout="centered")
 
-# كلمة سر لوحة التحكم (الادمن)
-ADMIN_PASSWORD = 'Ammar'
-
+# 2. إنشاء وتوصيل قاعدة البيانات
 def get_db_connection():
-    conn = sqlite3.connect('orders.db')
-    conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect('orders.db', check_same_thread=False)
     return conn
 
 def init_db():
     conn = get_db_connection()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS client_orders (
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_name TEXT NOT NULL,
-            shein_link TEXT NOT NULL,
-            created_date TEXT NOT NULL,
-            status TEXT DEFAULT 'جديد',
-            order_number TEXT DEFAULT ''
+            customer_name TEXT NOT NULL,
+            bag_link TEXT NOT NULL,
+            order_number TEXT DEFAULT '',
+            status TEXT DEFAULT 'قيد الانتظار',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
-    conn.close()
 
-# 1. صفحة إدخال البيانات للعميل
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        client_name = request.form.get('client_name')
-        shein_link = request.form.get('shein_link')
+init_db()
 
-        if not client_name or not shein_link:
-            flash('يرجى ملء جميع الحقول المطلوبة.', 'danger')
-            return redirect(url_for('index'))
+# 3. الشريط الجانبي للتنقل
+st.sidebar.title("📌 القائمة")
+page = st.sidebar.radio("اختر الصفحة:", ["تقديم طلب جديد", "لوحة التحكم (الأدمن)"])
 
-        # تاريخ اليوم تلقائياً
-        today_date = datetime.now().strftime('%Y-%m-%d')
+# ---------------------------------------------------------
+# الصفحة الأولى: تقديم طلب جديد (للعملاء)
+# ---------------------------------------------------------
+if page == "تقديم طلب جديد":
+    st.title("🛍️ نموذج تسجيل طلبات شي إن")
+    st.write("برجاء إدخال اسمك ورابط حقيبة التسوق الخاصة بك")
+
+    with st.form(key="order_form", clear_on_submit=True):
+        customer_name = st.text_input("اسم العميل / اسم الحساب:")
+        bag_link = st.text_input("رابط شنطة شي إن (Bag Link):")
+        submit_button = st.form_submit_button(label="إرسال الطلب 🚀")
+
+    if submit_button:
+        if customer_name.strip() and bag_link.strip():
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO orders (customer_name, bag_link) VALUES (?, ?)',
+                (customer_name, bag_link)
+            )
+            conn.commit()
+            st.success("✅ تم تسجيل طلبك بنجاح! شكراً لك.")
+        else:
+            st.error("⚠️ يرجى ملء كافة البيانات المطلوب.")
+
+# ---------------------------------------------------------
+# الصفحة الثانية: لوحة التحكم (للأدمن)
+# ---------------------------------------------------------
+elif page == "لوحة التحكم (الأدمن)":
+    st.title("🔐 لوحة تحكم الأدمن")
+
+    # التحقق من كلمة المرور
+    if "admin_logged_in" not in st.session_state:
+        st.session_state["admin_logged_in"] = False
+
+    if not st.session_state["admin_logged_in"]:
+        password = st.text_input("أدخل كلمة المرور:", type="password")
+        if st.button("تسجيل الدخول"):
+            if password == "Ammar":
+                st.session_state["admin_logged_in"] = True
+                st.rerun()
+            else:
+                st.error("❌ كلمة المرور غير صحيحة")
+    else:
+        st.sidebar.button("تسجيل الخروج", on_click=lambda: st.session_state.update({"admin_logged_in": False}))
+        st.subheader("📋 قائمة الطلبات المسجلة")
 
         conn = get_db_connection()
-        conn.execute(
-            'INSERT INTO client_orders (client_name, shein_link, created_date, status, order_number) VALUES (?, ?, ?, ?, ?)',
-            (client_name, shein_link, today_date, 'جديد', '')
-        )
-        conn.commit()
-        conn.close()
+        orders_df = pd.read_sql_query("SELECT id, customer_name, bag_link, order_number, status, created_at FROM orders ORDER BY id DESC", conn)
 
-        flash('تم إرسال طلبك بنجاح!', 'success')
-        return redirect(url_for('index'))
+        if not orders_df.empty:
+            # عرض جدول الطلبات
+            st.dataframe(orders_df, use_container_width=True)
 
-    return render_template('index.html')
+            st.divider()
+            st.subheader("⚙️ تعديل أو تحديث طلب")
 
-# 2. صفحة تسجيل الدخول للأدمن
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        password = request.form.get('password')
-        if password == ADMIN_PASSWORD:
-            session['logged_in'] = True
-            flash('تم تسجيل الدخول بنجاح.', 'success')
-            return redirect(url_for('admin'))
-        else:
-            flash('كلمة السر غير صحيحة!', 'danger')
-            return redirect(url_for('login'))
+            selected_id = st.selectbox("اختر رقم الطلب (ID):", orders_df["id"].tolist())
             
-    return render_template('login.html')
+            # جلب بيانات الطلب المختار
+            current_order = orders_df[orders_df["id"] == selected_id].iloc[0]
 
-# 3. تسجيل الخروج
-@app.route('/logout')
-def logout():
-    session.pop('logged_in', None)
-    flash('تم تسجيل الخروج.', 'info')
-    return redirect(url_for('login'))
+            new_order_num = st.text_input("رقم الأوردر:", value=current_order["order_number"])
+            status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
+            new_status = st.selectbox("حالة الطلب:", status_options, index=status_options.index(current_order["status"]) if current_order["status"] in status_options else 0)
 
-# 4. لوحة التحكم (محمية بكلمة السر Ammar)
-@app.route('/admin')
-def admin():
-    if not session.get('logged_in'):
-        flash('يرجى تسجيل الدخول أولاً للوصول إلى لوحة التحكم.', 'warning')
-        return redirect(url_for('login'))
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("تحديث البيانات 💾"):
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE orders SET order_number = ?, status = ? WHERE id = ?", (new_order_num, new_status, selected_id))
+                    conn.commit()
+                    st.success("تم تحديث البيانات بنجاح!")
+                    st.rerun()
 
-    search_query = request.args.get('search', '').strip()
-    status_filter = request.args.get('status', '').strip()
-
-    conn = get_db_connection()
-    query = 'SELECT * FROM client_orders WHERE 1=1'
-    params = []
-
-    if search_query:
-        query += ' AND client_name LIKE ?'
-        params.append(f'%{search_query}%')
-
-    if status_filter:
-        query += ' AND status = ?'
-        params.append(status_filter)
-
-    query += ' ORDER BY id DESC'
-
-    orders = conn.execute(query, params).fetchall()
-    conn.close()
-
-    return render_template('admin.html', orders=orders, search_query=search_query, status_filter=status_filter)
-
-# 5. تحديث حالة الطلب ورقم الأوردر
-@app.route('/admin/update/<int:order_id>', methods=['POST'])
-def update_order(order_id):
-    if not session.get('logged_in'):
-        flash('غير مسموح بهذا الإجراء.', 'danger')
-        return redirect(url_for('login'))
-
-    order_number = request.form.get('order_number', '').strip()
-    status = request.form.get('status', 'جديد')
-
-    conn = get_db_connection()
-    conn.execute(
-        'UPDATE client_orders SET order_number = ?, status = ? WHERE id = ?',
-        (order_number, status, order_id)
-    )
-    conn.commit()
-    conn.close()
-
-    flash('تم تحديث البيانات بنجاح.', 'success')
-    return redirect(url_for('admin', search=request.args.get('search', ''), status=request.args.get('status', '')))
-
-if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
+            with col2:
+                if st.button("حذف الطلب 🗑️"):
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM orders WHERE id = ?", (selected_id,))
+                    conn.commit()
+                    st.warning("تم حذف الطلب!")
+                    st.rerun()
+        else:
+            st.info("لا توجد طلبات مسجلة حالياً.")
