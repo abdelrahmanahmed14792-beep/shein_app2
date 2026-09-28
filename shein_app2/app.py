@@ -101,7 +101,7 @@ elif page == "لوحة التحكم (الأدمن)":
     if not st.session_state["admin_logged_in"]:
         password = st.text_input("أدخل كلمة المرور:", type="password")
         if st.button("تسجيل الدخول"):
-            if password == "Ammar":  # كلمة المرور
+            if password == "Ammar14794":  # كلمة المرور
                 st.session_state["admin_logged_in"] = True
                 st.rerun()
             else:
