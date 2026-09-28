@@ -22,7 +22,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # إنشاء الجدول إضافة الأعمدة الجديدة (phone, request_type)
+    # إنشاء الجدول وإضافة الأعمدة الجديدة (phone, request_type)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +76,7 @@ if page == "تقديم طلب جديد":
         elif not clean_link:
             st.error("⚠️ يرجى إضافة رابط الشنطة بشكل صحيح.")
         else:
-            # في حال اكتمال كافة البيانات
+            # تسجيل التوقيت بتوقيت القاهرة
             now_str = datetime.now(ZoneInfo('Africa/Cairo')).strftime("%Y-%m-%d %I:%M:%S %p")
 
             conn = get_db_connection()
@@ -101,7 +101,7 @@ elif page == "لوحة التحكم (الأدمن)":
     if not st.session_state["admin_logged_in"]:
         password = st.text_input("أدخل كلمة المرور:", type="password")
         if st.button("تسجيل الدخول"):
-            if password == "Ammar":  # يمكنك تغيير كلمة المرور من هنا
+            if password == "Ammar":  # كلمة المرور
                 st.session_state["admin_logged_in"] = True
                 st.rerun()
             else:
@@ -157,8 +157,16 @@ elif page == "لوحة التحكم (الأدمن)":
                     st.warning("⚠️ الرابط غير صالح.")
             
             with col_link2:
+                # استخراج الأرقام فقط من خانة الواتساب
                 clean_phone = re.sub(r'\D', '', str(current_order['phone']))
+                
                 if clean_phone:
+                    # تحويل الرقم المصري للصيغة الدولية تلقائياً
+                    if clean_phone.startswith('01'):
+                        clean_phone = '20' + clean_phone[1:]
+                    elif not clean_phone.startswith('20') and len(clean_phone) == 10:
+                        clean_phone = '20' + clean_phone
+
                     st.link_button("💬 مراسلة العميل على الواتساب", f"https://wa.me/{clean_phone}", use_container_width=True)
 
             with st.container(border=True):
