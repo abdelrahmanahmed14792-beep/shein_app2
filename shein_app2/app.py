@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import re
+import urllib.parse
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -22,7 +23,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # إنشاء الجدول وإضافة الأعمدة الجديدة (phone, request_type)
+    # إنشاء الجدول وإضافة الأعمدة الجديدة
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,10 +32,18 @@ def init_db():
             request_type TEXT DEFAULT '',
             bag_link TEXT NOT NULL,
             order_number TEXT DEFAULT '',
+            total_price TEXT DEFAULT '',
             status TEXT DEFAULT 'قيد الانتظار',
             created_at TEXT
         )
     ''')
+    
+    # التأكد من وجود عمود total_price للبيانات القديمة إن وجدت
+    cursor.execute("PRAGMA table_info(orders)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'total_price' not in columns:
+        cursor.execute("ALTER TABLE orders ADD COLUMN total_price TEXT DEFAULT ''")
+        
     conn.commit()
 
 init_db()
@@ -66,7 +75,6 @@ if page == "تقديم طلب جديد":
     if submit_button:
         clean_link = extract_url(bag_link)
         
-        # التأكد من ملء جميع الخانات بشكل إجباري
         if not customer_name.strip():
             st.error("⚠️ يرجى كتابة اسم العميل.")
         elif not phone.strip():
@@ -76,7 +84,6 @@ if page == "تقديم طلب جديد":
         elif not clean_link:
             st.error("⚠️ يرجى إضافة رابط الشنطة بشكل صحيح.")
         else:
-            # تسجيل التوقيت بتوقيت القاهرة
             now_str = datetime.now(ZoneInfo('Africa/Cairo')).strftime("%Y-%m-%d %I:%M:%S %p")
 
             conn = get_db_connection()
@@ -101,7 +108,7 @@ elif page == "لوحة التحكم (الأدمن)":
     if not st.session_state["admin_logged_in"]:
         password = st.text_input("أدخل كلمة المرور:", type="password")
         if st.button("تسجيل الدخول"):
-            if password == "Ammar14794":  # كلمة المرور
+            if password == "Ammar":
                 st.session_state["admin_logged_in"] = True
                 st.rerun()
             else:
@@ -111,7 +118,7 @@ elif page == "لوحة التحكم (الأدمن)":
         
         conn = get_db_connection()
         orders_df = pd.read_sql_query(
-            "SELECT id, customer_name, phone, request_type, bag_link, order_number, status, created_at FROM orders ORDER BY id DESC", 
+            "SELECT id, customer_name, phone, request_type, bag_link, order_number, total_price, status, created_at FROM orders ORDER BY id DESC", 
             conn
         )
 
@@ -121,20 +128,18 @@ elif page == "لوحة التحكم (الأدمن)":
             st.subheader("📋 جدول الطلبات")
             
             st.dataframe(
-                orders_df[['id', 'customer_name', 'phone', 'request_type', 'clean_url', 'order_number', 'status', 'created_at']],
+                orders_df[['id', 'customer_name', 'phone', 'request_type', 'clean_url', 'total_price', 'order_number', 'status', 'created_at']],
                 use_container_width=True,
                 column_config={
                     "id": "رقم الطلب",
                     "customer_name": "اسم العميل",
                     "phone": "رقم الواتساب 📱",
                     "request_type": "نوع الطلب 📌",
-                    "clean_url": st.column_config.LinkColumn(
-                        "الرابط المباشر 🔗", 
-                        display_text="فتح الرابط 🔗"
-                    ),
+                    "clean_url": st.column_config.LinkColumn("الرابط المباشر 🔗", display_text="فتح الرابط 🔗"),
+                    "total_price": "سعر الباج 💰",
                     "order_number": "رقم الأوردر",
                     "status": "الحالة",
-                    "created_at": "تاريخ ووقت الإرسال ⏰"
+                    "created_at": "تاريخ الإرسال ⏰"
                 }
             )
 
@@ -148,26 +153,32 @@ elif page == "لوحة التحكم (الأدمن)":
             current_order = orders_df[orders_df["id"] == selected_id].iloc[0]
             target_url = extract_url(current_order["bag_link"])
 
-            # إظهار زر رابط الشنطة + رابط سريع لفتح محادثة الواتساب مع العميل
-            col_link1, col_link2 = st.columns(2)
-            with col_link1:
+            # تجهيز رقم الهاتف بصيغة الواتساب الدولية
+            clean_phone = re.sub(r'\D', '', str(current_order['phone']))
+            if clean_phone.startswith('01'):
+                clean_phone = '20' + clean_phone[1:]
+            elif not clean_phone.startswith('20') and len(clean_phone) == 10:
+                clean_phone = '20' + clean_phone
+
+            # أزرار الإجراءات السريعة
+            col_b1, col_b2, col_b3 = st.columns(3)
+            
+            with col_b1:
                 if target_url.startswith("http"):
-                    st.link_button("🔗 فتح رابط الشنطة", target_url, use_container_width=True)
+                    st.link_button("🔗 اظهار اللينك", target_url, use_container_width=True)
                 else:
                     st.warning("⚠️ الرابط غير صالح.")
-            
-            with col_link2:
-                # استخراج الأرقام فقط من خانة الواتساب
-                clean_phone = re.sub(r'\D', '', str(current_order['phone']))
-                
-                if clean_phone:
-                    # تحويل الرقم المصري للصيغة الدولية تلقائياً
-                    if clean_phone.startswith('01'):
-                        clean_phone = '20' + clean_phone[1:]
-                    elif not clean_phone.startswith('20') and len(clean_phone) == 10:
-                        clean_phone = '20' + clean_phone
 
-                    st.link_button("💬 مراسلة العميل على الواتساب", f"https://wa.me/{clean_phone}", use_container_width=True)
+            with col_b2:
+                if clean_phone:
+                    st.link_button("💬 مراسلة على واتساب", f"https://wa.me/{clean_phone}", use_container_width=True)
+
+            with col_b3:
+                if clean_phone:
+                    price_val = current_order['total_price'] if current_order['total_price'] else "لم يحدد بعد"
+                    msg_text = f"ازيك يا حبيبتي يارب تكوني بخير ❤️ ، سعر الباج اللي انتي باعتاهالي بالكامل هو {price_val} ، تحبي اعملك اوردر ؟"
+                    encoded_msg = urllib.parse.quote(msg_text)
+                    st.link_button("📩 ارسال سعر الباج للعميل", f"https://wa.me/{clean_phone}?text={encoded_msg}", use_container_width=True)
 
             with st.container(border=True):
                 st.markdown(f"**صاحب الطلب:** {current_order['customer_name']}")
@@ -175,7 +186,9 @@ elif page == "لوحة التحكم (الأدمن)":
                 st.markdown(f"**نوع الطلب:** {current_order['request_type']}")
                 st.markdown(f"**توقيت الطلب:** {current_order['created_at']}")
                 
-                new_order_num = st.text_input("رقم الأوردر (Order Number):", value=current_order["order_number"])
+                # إضافة خانات التعديل
+                new_price = st.text_input("سعر الباج بالكامل (جنيه/دولار):", value=str(current_order["total_price"] if pd.notnull(current_order["total_price"]) else ""))
+                new_order_num = st.text_input("رقم الأوردر (Order Number):", value=str(current_order["order_number"] if pd.notnull(current_order["order_number"]) else ""))
                 
                 status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
                 current_status_idx = status_options.index(current_order["status"]) if current_order["status"] in status_options else 0
@@ -185,9 +198,12 @@ elif page == "لوحة التحكم (الأدمن)":
                 with col1:
                     if st.button("حفظ التعديلات 💾", use_container_width=True):
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE orders SET order_number = ?, status = ? WHERE id = ?", (new_order_num, new_status, selected_id))
+                        cursor.execute(
+                            "UPDATE orders SET total_price = ?, order_number = ?, status = ? WHERE id = ?", 
+                            (new_price, new_order_num, new_status, selected_id)
+                        )
                         conn.commit()
-                        st.success("تم تحديث الطلب بنجاح!")
+                        st.success("تم تحديث البيانات والسعر بنجاح!")
                         st.rerun()
 
                 with col2:
