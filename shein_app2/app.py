@@ -23,7 +23,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # إنشاء الجدول وإضافة الأعمدة الجديدة
+    # إنشاء الجدول وإضافة الأعمدة
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,8 +175,14 @@ elif page == "لوحة التحكم (الأدمن)":
 
             with col_b3:
                 if clean_phone:
+                    # استخراج الاسم الأول للعميل
+                    full_name = str(current_order['customer_name']).strip()
+                    first_name = full_name.split()[0] if full_name else "يا جميل"
+
                     price_val = current_order['total_price'] if current_order['total_price'] else "لم يحدد بعد"
-                    msg_text = f"ازيك يا حبيبتي يارب تكوني بخير ❤️ ، سعر الباج اللي انتي باعتاهالي بالكامل هو {price_val} ، تحبي اعملك اوردر ؟"
+                    
+                    # صياغة الرسالة بالاسم الأول والسعر
+                    msg_text = f"ازيك يا {first_name} ، يارب تكوني بخير ❤️ ، سعر الباج اللي انتي باعتاهالي بالكامل هو {price_val} ، تحبي اعملك اوردر ؟"
                     encoded_msg = urllib.parse.quote(msg_text)
                     st.link_button("📩 ارسال سعر الباج للعميل", f"https://wa.me/{clean_phone}?text={encoded_msg}", use_container_width=True)
 
