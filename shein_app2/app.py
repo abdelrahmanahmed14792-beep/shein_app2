@@ -127,11 +127,14 @@ elif page == "لوحة التحكم (الأدمن)":
 
             st.subheader("📋 جدول الطلبات")
             
+            # تم إضافة hide_index=True لإلغاء عمود الترقيم التلقائي (0, 1, 2)
+            # وتوضيح رقم الطلب الحقيقي (id) بداخل الجدول
             st.dataframe(
                 orders_df[['id', 'customer_name', 'phone', 'request_type', 'clean_url', 'total_price', 'order_number', 'status', 'created_at']],
                 use_container_width=True,
+                hide_index=True,
                 column_config={
-                    "id": "رقم الطلب",
+                    "id": "رقم الطلب 🆔",
                     "customer_name": "اسم العميل",
                     "phone": "رقم الواتساب 📱",
                     "request_type": "نوع الطلب 📌",
