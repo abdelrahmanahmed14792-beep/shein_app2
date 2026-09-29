@@ -196,7 +196,7 @@ elif page == "لوحة التحكم (الأدمن)":
                 st.markdown(f"**توقيت الطلب:** {current_order['created_at']}")
                 
                 # إضافة خانات التعديل
-                new_price = st.text_input("سعر الباج بالكامل (جنيه/دولار):", value=str(current_order["total_price"] if pd.notnull(current_order["total_price"]) else ""))
+                new_price = st.text_input("سعر الباج بالكامل (جنيه):", value=str(current_order["total_price"] if pd.notnull(current_order["total_price"]) else ""))
                 new_order_num = st.text_input("رقم الأوردر (Order Number):", value=str(current_order["order_number"] if pd.notnull(current_order["order_number"]) else ""))
                 
                 status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
