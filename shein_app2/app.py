@@ -127,8 +127,6 @@ elif page == "لوحة التحكم (الأدمن)":
 
             st.subheader("📋 جدول الطلبات")
             
-            # تم إضافة hide_index=True لإلغاء عمود الترقيم التلقائي (0, 1, 2)
-            # وتوضيح رقم الطلب الحقيقي (id) بداخل الجدول
             st.dataframe(
                 orders_df[['id', 'customer_name', 'phone', 'request_type', 'clean_url', 'total_price', 'order_number', 'status', 'created_at']],
                 use_container_width=True,
@@ -184,8 +182,8 @@ elif page == "لوحة التحكم (الأدمن)":
 
                     price_val = current_order['total_price'] if current_order['total_price'] else "لم يحدد بعد"
                     
-                    # صياغة الرسالة بالاسم الأول والسعر
-                    msg_text = f"ازيك يا {first_name} ، يارب تكوني بخير ❤️ ، سعر الباج اللي انتي باعتاهالي بالكامل هو {price_val} ، تحبي اعملك اوردر ؟"
+                    # صياغة الرسالة مع إضافة رابط الباج المطلوب في نهاية الرسالة
+                    msg_text = f"ازيك يا {first_name} ، يارب تكوني بخير ❤️ ، سعر الباج اللي انتي باعتاهالي بالكامل هو {price_val} ، تحبي اعملك اوردر ؟\n\nرابط الباج المطلوب:\n{target_url}"
                     encoded_msg = urllib.parse.quote(msg_text)
                     st.link_button("📩 ارسال سعر الباج للعميل", f"https://wa.me/{clean_phone}?text={encoded_msg}", use_container_width=True)
 
@@ -196,7 +194,7 @@ elif page == "لوحة التحكم (الأدمن)":
                 st.markdown(f"**توقيت الطلب:** {current_order['created_at']}")
                 
                 # إضافة خانات التعديل
-                new_price = st.text_input("سعر الباج بالكامل (جنيه):", value=str(current_order["total_price"] if pd.notnull(current_order["total_price"]) else ""))
+                new_price = st.text_input("سعر الباج بالكامل (جنيه/دولار):", value=str(current_order["total_price"] if pd.notnull(current_order["total_price"]) else ""))
                 new_order_num = st.text_input("رقم الأوردر (Order Number):", value=str(current_order["order_number"] if pd.notnull(current_order["order_number"]) else ""))
                 
                 status_options = ["قيد الانتظار", "تم الطلب", "تم الشحن", "تم التسليم", "ملغي"]
