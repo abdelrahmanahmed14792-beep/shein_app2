@@ -1,50 +1,50 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
 import re
 import urllib.parse
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import gspread
-from google.oauth2.service_account import Credentials
 
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="نظام إدارة طلبات شي إن", page_icon="🛍️", layout="centered")
 
-# 2. الربط مع Google Sheets
-@st.cache_resource
-def get_gspread_client():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(credentials)
-
-def get_sheet():
-    client = get_gspread_client()
-    # فتح الملف باسمه في Google Drive
-    sheet = client.open("Shein_Orders").sheet1
-    return sheet
-
-def load_orders():
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-    if not records:
-        return pd.DataFrame(columns=[
-            'id', 'customer_name', 'phone', 'request_type', 
-            'bag_link', 'order_number', 'total_price', 'status', 'created_at'
-        ])
-    df = pd.DataFrame(records)
-    # تحويل العمود id لإصلاح القراءات الرقمية
-    df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
-    return df
-
+# دالة لاستخراج رابط الـ URL النقي من النص المشارك من تطبيق شي إن
 def extract_url(text):
     if not text:
         return ""
     url_match = re.search(r'https?://[^\s]+', str(text))
     return url_match.group(0) if url_match else str(text).strip()
+
+# 2. إنشاء وتوصيل قاعدة البيانات
+def get_db_connection():
+    return sqlite3.connect('orders.db', check_same_thread=False)
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_name TEXT NOT NULL,
+            phone TEXT DEFAULT '',
+            request_type TEXT DEFAULT '',
+            bag_link TEXT NOT NULL,
+            order_number TEXT DEFAULT '',
+            total_price TEXT DEFAULT '',
+            status TEXT DEFAULT 'قيد الانتظار',
+            created_at TEXT
+        )
+    ''')
+    
+    cursor.execute("PRAGMA table_info(orders)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'total_price' not in columns:
+        cursor.execute("ALTER TABLE orders ADD COLUMN total_price TEXT DEFAULT ''")
+        
+    conn.commit()
+
+init_db()
 
 # 3. الشريط الجانبي
 st.sidebar.title("📌 القائمة الرئيسية")
@@ -67,6 +67,7 @@ if page == "تقديم طلب جديد":
         )
         
         bag_link = st.text_area("رابط أو نص مشاركة حقيبة شي إن *:")
+        
         submit_button = st.form_submit_button(label="إرسال الطلب 🚀")
 
     if submit_button:
@@ -81,19 +82,16 @@ if page == "تقديم طلب جديد":
         elif not clean_link:
             st.error("⚠️ يرجى إضافة رابط الشنطة بشكل صحيح.")
         else:
-            sheet = get_sheet()
-            orders_df = load_orders()
-            
-            # تحديد رقم الطلب الجديد
-            new_id = int(orders_df['id'].max() + 1) if not orders_df.empty and orders_df['id'].max() > 0 else 1
             now_str = datetime.now(ZoneInfo('Africa/Cairo')).strftime("%Y-%m-%d %I:%M:%S %p")
 
-            new_row = [
-                new_id, customer_name.strip(), str(phone.strip()), 
-                request_type, clean_link, "", "", "قيد الانتظار", now_str
-            ]
-            
-            sheet.append_row(new_row)
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                '''INSERT INTO orders (customer_name, phone, request_type, bag_link, created_at) 
+                   VALUES (?, ?, ?, ?, ?)''',
+                (customer_name.strip(), phone.strip(), request_type, clean_link, now_str)
+            )
+            conn.commit()
             st.success("✅ تم تسجيل طلبك بنجاح! سنقوم بالتواصل معك عبر الواتساب قريباً.")
 
 # ---------------------------------------------------------
@@ -116,12 +114,14 @@ elif page == "لوحة التحكم (الأدمن)":
     else:
         st.sidebar.button("تسجيل الخروج", on_click=lambda: st.session_state.update({"admin_logged_in": False}))
         
-        orders_df = load_orders()
+        conn = get_db_connection()
+        orders_df = pd.read_sql_query(
+            "SELECT id, customer_name, phone, request_type, bag_link, order_number, total_price, status, created_at FROM orders ORDER BY id DESC", 
+            conn
+        )
 
         if not orders_df.empty:
             orders_df['clean_url'] = orders_df['bag_link'].apply(extract_url)
-            # ترتيب الطلبات تنازلياً من الأحدث للأقدم
-            orders_df = orders_df.sort_values(by="id", ascending=False)
 
             st.subheader("📋 جدول الطلبات")
             
@@ -143,7 +143,7 @@ elif page == "لوحة التحكم (الأدمن)":
             )
 
             st.divider()
-            st.subheader("⚙️ إدارة وتعديل طلب محدد")
+            st.subheader("⚙️️ إدارة وتعديل طلب محدد")
 
             order_list = {f"طلب رقم {row['id']} - {row['customer_name']} ({row['request_type']})": row['id'] for _, row in orders_df.iterrows()}
             selected_label = st.selectbox("اختر الطلب للتعديل أو الفتح:", list(order_list.keys()))
@@ -197,24 +197,21 @@ elif page == "لوحة التحكم (الأدمن)":
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("حفظ التعديلات 💾", use_container_width=True):
-                        sheet = get_sheet()
-                        cell = sheet.find(str(selected_id), in_column=1)
-                        if cell:
-                            row_idx = cell.row
-                            # تعديل قيم الأعمدة (Order Number, Price, Status)
-                            sheet.update_cell(row_idx, 6, new_order_num)
-                            sheet.update_cell(row_idx, 7, new_price)
-                            sheet.update_cell(row_idx, 8, new_status)
-                            st.success("تم تحديث البيانات والسعر بنجاح!")
-                            st.rerun()
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE orders SET total_price = ?, order_number = ?, status = ? WHERE id = ?", 
+                            (new_price, new_order_num, new_status, selected_id)
+                        )
+                        conn.commit()
+                        st.success("تم تحديث البيانات والسعر بنجاح!")
+                        st.rerun()
 
                 with col2:
                     if st.button("حذف الطلب 🗑️", type="secondary", use_container_width=True):
-                        sheet = get_sheet()
-                        cell = sheet.find(str(selected_id), in_column=1)
-                        if cell:
-                            sheet.delete_rows(cell.row)
-                            st.warning("تم حذف الطلب بنجاح.")
-                            st.rerun()
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM orders WHERE id = ?", (selected_id,))
+                        conn.commit()
+                        st.warning("تم حذف الطلب بنجاح.")
+                        st.rerun()
         else:
             st.info("لا توجد طلبات مسجلة حتى الآن.")
