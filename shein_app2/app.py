@@ -9,7 +9,7 @@ YOUR_WHATSAPP_NUMBER = "201021157789"
 
 st.set_page_config(page_title="نظام طلبات شي إن", page_icon="🛍️", layout="centered")
 
-# 2️⃣ إنشاء وتجهيز قاعدة بيانات SQLite
+# 2️⃣ إنشاء وتجهيز قاعدة البيانات (مع التعامل مع التحديثات)
 def init_db():
     conn = sqlite3.connect('orders.db')
     c = conn.cursor()
@@ -39,21 +39,35 @@ with st.form("order_form", clear_on_submit=False):
     
     submit_button = st.form_submit_button("تسجيل الطلب والتحويل للواتساب 🚀")
 
-# 4️⃣ معالجة البيانات وإعادة التوجيه المباشر
+# 4️⃣ معالجة البيانات والحفظ وإعادة التوجيه المباشر
 if submit_button:
     if name.strip() and phone.strip() and item_link.strip():
-        # تسجيل التاريخ والوقت الحالي
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # 1. حفظ البيانات في قاعدة البيانات أولاً
-        conn = sqlite3.connect('orders.db')
-        c = conn.cursor()
-        c.execute("INSERT INTO orders (customer_name, phone, item_link, order_date) VALUES (?, ?, ?, ?)",
-                  (name.strip(), phone.strip(), item_link.strip(), now_str))
-        conn.commit()
-        conn.close()
+        # حفظ البيانات في قاعدة البيانات SQLite
+        try:
+            conn = sqlite3.connect('orders.db')
+            c = conn.cursor()
+            c.execute("INSERT INTO orders (customer_name, phone, item_link, order_date) VALUES (?, ?, ?, ?)",
+                      (name.strip(), phone.strip(), item_link.strip(), now_str))
+            conn.commit()
+            conn.close()
+        except sqlite3.OperationalError:
+            # في حال وجود تعارض مع ملف orders.db القديم، يتم إعادة إنشائه تلقائياً
+            import os
+            if os.path.exists('orders.db'):
+                os.remove('orders.db')
+            init_db()
+            conn = sqlite3.connect('orders.db')
+            c = conn.cursor()
+            c.execute("INSERT INTO orders (customer_name, phone, item_link, order_date) VALUES (?, ?, ?, ?)",
+                      (name.strip(), phone.strip(), item_link.strip(), now_str))
+            conn.commit()
+            conn.close()
         
-        # 2. صياغة وتشفير نص الرسالة للواتساب
+        st.success("تم تسجيل الطلب بنجاح! جاري تحويلك للواتساب... ⏳")
+        
+        # صياغة وتشفير نص الرسالة للواتساب
         message_text = f"""📦 *طلب جديد من التطبيق*
 
 👤 *الاسم:* {name.strip()}
@@ -64,9 +78,7 @@ if submit_button:
         encoded_message = urllib.parse.quote(message_text)
         whatsapp_url = f"https://wa.me/{YOUR_WHATSAPP_NUMBER}?text={encoded_message}"
         
-        st.success("تم تسجيل الطلب في قاعدة البيانات! جاري تحويلك للواتساب... ⏳")
-        
-        # 3. إعادة التوجيه التلقائي والمباشر للواتساب باستخدام JavaScript
+        # إعادة التوجيه التلقائي عبر JavaScript
         js_redirect = f"""
             <script>
                 window.open("{whatsapp_url}", "_blank");
