@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import re
 import urllib.parse
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import streamlit.components.v1 as components
@@ -88,15 +89,29 @@ if page == "تقديم طلب جديد":
         else:
             now_str = datetime.now(ZoneInfo('Africa/Cairo')).strftime("%Y-%m-%d %I:%M:%S %p")
 
-            # 1. حفظ الطلب في قاعدة البيانات
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                '''INSERT INTO orders (customer_name, phone, request_type, bag_link, created_at) 
-                   VALUES (?, ?, ?, ?, ?)''',
-                (customer_name.strip(), phone.strip(), request_type, clean_link, now_str)
-            )
-            conn.commit()
+            # 1. حفظ الطلب في قاعدة البيانات مع المعالجة التلقائية للجدول القديم
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''INSERT INTO orders (customer_name, phone, request_type, bag_link, created_at) 
+                       VALUES (?, ?, ?, ?, ?)''',
+                    (customer_name.strip(), phone.strip(), request_type, clean_link, now_str)
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                # في حالة وجود تعارض مع ملف orders.db القديم، يتم حذفه وإعادة إنشائه بالهيكل الجديد
+                if os.path.exists('orders.db'):
+                    os.remove('orders.db')
+                init_db()
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''INSERT INTO orders (customer_name, phone, request_type, bag_link, created_at) 
+                       VALUES (?, ?, ?, ?, ?)''',
+                    (customer_name.strip(), phone.strip(), request_type, clean_link, now_str)
+                )
+                conn.commit()
             
             st.success("✅ تم تسجيل طلبك بنجاح! جاري تحويلك للواتساب... ⏳")
 
