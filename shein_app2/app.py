@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import streamlit.components.v1 as components
 
 # رقم الواتساب المخصص لاستقبال الطلبات من العملاء
-YOUR_WHATSAPP_NUMBER = "201021157789"
+YOUR_WHATSAPP_NUMBER = "201289557347"
 
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="نظام إدارة طلبات شي إن", page_icon="🛍️", layout="centered")
